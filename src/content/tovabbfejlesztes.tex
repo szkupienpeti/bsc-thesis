@@ -1,0 +1,19 @@
+% TeXstudio spellcheck 2020-12-10 16:40
+
+\chapter{Összefoglalás} \label{osszefoglalas}
+
+Szakdolgozatomban áttekintettem a modellellenőrzés alapjait, az időzített viselkedésmodellek leírására használt időzített automata formalizmust, valamint ennek bizonyos absztrakciós módszereit. Bemutattam az SMT problémákat és a Theta modellellenőrző keretrendszert.
+
+Formalizáltam az időzített automaták hálózatain értelmezett valós idejű teszteket és tesztkészletet, majd az ezekre vonatkozó követelményeket. Kifejlesztettem egy algoritmust, amely minden vezérlési helyet lefedő tesztkészletet generál, majd a teszteseteket SMT problémaként megfogalmazva konkrét időzítéssel látja el. Megoldásomat implementáltam a Theta keretrendszer kiegészítéseként, amelyet szintén részletesen elemeztem.
+
+Végül egy esettanulmányon keresztül részletesen is bemutattam a tesztgenerálási folyamatot, majd méréseket végeztem munkám értékelésére.
+
+\section{Továbbfejlesztési lehetőségek} \label{tovabbfejlesztes}
+
+Munkám elsődleges továbbfejlesztési lehetősége a generált tesztkészlettel szemben támasztott elvárásokkal kapcsolatos. A \ref{kovetelmenyek}. fejezetben bemutatott bizonyos elvárások ellentétben állhatnak egymással, például a tesztesetek számának és a tesztesetek hosszának minimalizálása. Adódik tehát az igény arra, hogy a tesztgeneráló algoritmust paraméterezni lehessen a követelmények priorizálásával.
+
+A \ref{kovetelmenyek}. fejezetben bemutatottakon túl további elvárások is definiálhatók. Törekedhetünk például olyan tesztesetekre is, amelyek az állapotátmeneteket azok lehetséges időintervallumának a közepén vagy éppen a legszélén tüzelik. Előbbi esetben a teszt lefuttatása során kevésbé kell precíznek lenni az inputok időzítését illetően, míg utóbbi esetben ez a precizitás nélkülözhetetlen. Mindkettő lehet cél: előbbi esetben könnyebb a teszt lefuttatása, utóbbi esetben pedig tetten érhetünk nagyon kis valószínűséggel bekövetkező időzítési hibás eseteket.
+
+Jelenleg a tesztesetek kimeneti formátuma szöveges és grafikus, vagyis közvetlenül nem futtathatók, munkám azonban további kimeneti formátumokkal is bővíthető. Amennyiben a teszteseteket az UPPAAL szimulátora által használt formátumban is előállítanám, azokat közvetlenül be lehetne tölteni az UPPAAL-ba, és ott szimulálhatóak lennének.
+
+Nemcsak a tesztek szimulációja lehet cél, végső soron a konkrét rendszeren való futtatásuk is. Távlati célként megfogalmazható tehát a konkrét alkalmazás függvényében a tesztesetek tényleges előállítása.

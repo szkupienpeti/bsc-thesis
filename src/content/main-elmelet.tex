@@ -1,0 +1,398 @@
+% TeXstudio spellcheck 2020-12-10 16:34
+
+\chapter{Valós idejű tesztek generálása vezérlési helyekhez}\label{main-elmelet}
+
+Ebben a fejezetben formalizálom a munkám során használt fogalmakat (\ref{teszt-tesztkeszlet}. fejezet), majd meghatározom a generálandó tesztkészlettel kapcsolatos elvárásokat (\ref{kovetelmenyek}. fejezet). Bemutatom a tesztesetek útvonalát (\ref{teszt-utvonal}. fejezet) és időzítését (\ref{teszt-idozites}. fejezet) generáló algoritmusokat, majd utóbbit visszavezetem egy SMT problémára (\ref{teszt-smt}. fejezet). Végül belátom, hogy a bemutatott algoritmusokkal generált tesztkészlet valóban teljesíti \aref{kovetelmenyek}. fejezetben megfogalmazott elvárásokat (\ref{kovetelmenyek-telj}. fejezet), majd leírom a szükséges kimeneti formátumokat (\ref{kimenet}. fejezet).
+
+A cél a bemenetként kapott időzített automata vezérlési helyeinek lefedése valós idejű (konkrét időzítésű) tesztekkel. A bemenetünk nemcsak egy, hanem tetszőleges (véges) számú időzített automata hálózata is lehet. Ehhez először is definiálnunk kell, hogy milyen tesztkészletet szeretnénk generálni (vagyis hogy milyen követelményeket támasztunk a tesztkészlettel szemben).
+
+Ezt követően fel kell dolgoznunk az időzített automatát. Egy véges, absztrakt adatszerkezetre (ASG) képezzük le, amelyet bejárva absztrakt teszteseteket tudunk generálni. Egy absztrakt tesztesethez konkrét időzítést kell generálni (vagyis konkretizálni kell a tesztet), hogy valós idejű tesztet kapjunk belőle.
+
+\section{Teszt, tesztkészlet} \label{teszt-tesztkeszlet}
+Egy időzített automatán értelmezett valós idejű teszt az automata egy konkrét lefutása (vezérlési helyek és élek alternáló időzített sorozata).
+
+Jelölje egy $\mathcal{A}$ időzített automata vezérlési helyeinek halmazát $L(\mathcal{A})$, kezdő vezérlési helyét $l_0(\mathcal{A})$, éleinek halmazát $T(\mathcal{A})$, invariánsainak halmazát $I(\mathcal{A})$.
+
+\begin{definition}[Valós idejű teszt]
+\label{ValósIdejűTeszt}
+Egy $\mathcal{A}$ időzített automata $n \in \mathbb{N}^+$ hosszúságú $\mathcal{T}$ \emph{valós idejű tesztje} formálisan $\langle \mathcal{A}, Loc, Act, \hat{t} \rangle$, ahol
+\begin{itemize}
+    \item $\mathcal{A}$ az időzített automata, amin az időzített teszt fut,
+    \item $Loc$ az $\mathcal{A}$ automata vezérlési helyeinek $n$ hosszú sorozata, vagyis $|Loc| = n$ és $Loc_i \in L(\mathcal{A})$, ha $1 \leq i \leq n$,
+    \item $Act$ az $\mathcal{A}$ automata éleinek $n-1$ hosszú sorozata, vagyis $|Act| = n-1$ és $Act_j \in T(\mathcal{A})$, ha $1 \leq j \leq n-1$,
+    \item $\hat{t}$ az időzítések $n$ hosszú sorozata, vagyis $|\hat{t}| = n$ és $\hat{t}_k \in \mathbb{R}_0^+$, ha $1 \leq k \leq n$, amely minden $Loc_k$ vezérlési helyre megadja, hogy a $k.$ lépésben $\hat{t}_k$ időt tölt el ott az automata.
+\end{itemize}
+\end{definition}
+
+Egy $\automaton$ automatán értelmezett $\test$ valós idejű teszt $i.$ lépése szemantikáját tekintve három lépésből áll, ahol $1 \leq i \leq |\test|$:
+\begin{enumerate}
+    \item tüzel az automata $Act_{i-1}$ éle, ha $i > 1$,
+    \item az automata $\hat{t}_{i}$ ideig várakozik a $Loc_i$ vezérlési helyen,
+    \item az óraváltozók a $Loc_i$-beli értékükre váltanak, vagyis a $Loc_i$-beli értékek már a $\hat{t}_{i}$ időnyi várakozás utáni értékekre vonatkozik.
+\end{enumerate}
+
+Jelölje egy $\mathcal{T}$ valós idejű teszt esetén $A(\mathcal{T})$ azt az időzített automatát, amelyen a teszt fut (vagyis $A(\langle \mathcal{A}, Loc, Act, \hat{t} \rangle) = \mathcal{A}$), $Loc(\mathcal{T})$ a teszt vezérlési helyeinek sorozatát, $Act(\mathcal{T})$ a teszt éleinek sorozatát, $\hat{t}(\mathcal{T})$ a teszt időzítéseinek sorozatát, $|\mathcal{T}| = |Loc(\mathcal{T})|$ a teszt hosszát, $Loc_s(\mathcal{T}) = \bigcup\limits_{i = 1}^{|Loc(\mathcal{T})|} \{ Loc(\mathcal{T})_i \}$ pedig a teszt által lefedett vezérlési helyek halmazát.
+
+\begin{definition}[Valós idejű teszt valódisága]
+\label{ValódiTeszt}
+Egy $\mathcal{T}$ valós idejű teszt \emph{valódi}, ha az $A(\mathcal{T})$ időzített automatának valóban van olyan lefutása, amit a teszt leír, vagyis 
+\begin{itemize}
+    \item $Loc(\mathcal{T})_1 = l_0(A(\mathcal{T}))$, vagyis a $\mathcal{T}$ teszt első vezérlési helye az $A(\mathcal{T})$ automata kezdő vezérlési helye,
+    \item minden $Loc(\mathcal{T})_i$ vezérlési helyen $\hat{t}(\mathcal{T})_i$ ideig történő várakozást lehetővé teszik az $A(\mathcal{T})$ automata $I(A(\mathcal{T}))$ invariánsai (vagyis az $A(\mathcal{T})$ időzített automatának van $\langle Loc(\mathcal{T})_i, u \rangle \rightarrow \langle Loc(\mathcal{T})_i, u + \hat{t}(\mathcal{T})_i \rangle$ állapotátmenete, ahol $u$ jelöli az óraváltozók állását, amikor a teszt az $i$. lépésben a $Loc(\mathcal{T})_i$ vezérlési helyre lép), ahol $1 \leq i \leq |\test|$,
+    \item minden $Act(\mathcal{T})_i$ élhez van olyan éle az $A(\mathcal{T})$ automatának, amely $Loc(\mathcal{T})_i$ vezérlési helyből $Loc(\mathcal{T})_{i+1}$ vezérlési helybe vezet, és $Loc(\mathcal{T})_i$ vezérlési helyen $\hat{t}(\mathcal{T})_i$ ideig való várakozás után tüzelhető (vagyis az $A(\mathcal{T})$ időzített automatának van $\langle Loc(\mathcal{T})_i, u \rangle \rightarrow \langle Loc(\mathcal{T})_{i+1}, u' \rangle$ állapotátmenete, ahol $u$ jelöli az óraváltozók állását, amikor a teszt az $i$. lépésben $\hat{t}(\mathcal{T})_i$ időt eltöltött a $Loc(\mathcal{T})_i$ vezérlési helyen), ahol $1 \leq i \leq |\test| - 1$.
+\end{itemize}
+\end{definition}
+
+\begin{definition}[Valós idejű tesztkészlet]
+\label{Tesztkészlet}
+Egy $\mathcal{A}$ időzített automata $n$ elemű $\mathfrak{T}$ \emph{valós idejű tesztkészlete} valós idejű tesztek $n \in \mathbb{N}^+$ elemű halmaza ($|\mathfrak{T}| = n$), amelynek minden $\mathfrak{T}_i$ tesztjére $A(\mathfrak{T}_i) = \mathcal{A}$, ahol $1 \leq i \leq n$.
+\end{definition}
+
+A valós idejű tesztek tulajdonságait kiterjeszthetjük a valós idejű tesztkészletekre is. Jelöljön $\mathfrak{T}$ egy valós idejű tesztkészletet.
+\begin{itemize}
+    \item $A(\mathfrak{T}) = A(\mathfrak{T}_i)$, ahol $1 \leq i \leq |\mathfrak{T}|$
+    \item $Loc_s(\mathfrak{T}) = \bigcup\limits_{i = 1}^{|\mathfrak{T}|} Loc_s(\mathfrak{T}_i)$ a $\mathfrak{T}$ által lefedett vezérlési helyek halmaza
+    \item $\mathfrak{T}$ \emph{valódi}, ha minden $\mathfrak{T}_i$ tesztje valódi, ahol $1 \leq i \leq |\mathfrak{T}|$
+\end{itemize}
+
+\subsection{Kiterjesztés időzített automaták hálózatára}
+
+A fent bevezetett fogalmak nemcsak egyetlen időzített automatára értelmezhetők, hanem kiterjeszthetők időzített automaták véges hálózatára (halmazára) is. Jelölje $\hat{\mathcal{A}}$ időzített automaták $n \in \mathbb{N}^+$ elemű hálózatát ($|\hat{\mathcal{A}}| = n$), $\hat{\mathcal{A}}_i$ pedig a hálózat egy automatáját ($1 \leq i \leq n$). Jelölje továbbá $L(\automatanetwork)$ az $\automatanetwork$-beli automaták vezérlési helyeinek halmazát, azaz $L(\automatanetwork) = \bigcup\limits_{i = 1}^{|\automatanetwork|} L(\automatanetwork_i)$; $T(\automatanetwork)$ pedig az $\automatanetwork$-beli automaták éleinek halmazát, azaz $T(\automatanetwork) = \bigcup\limits_{i = 1}^{|\automatanetwork|} T(\automatanetwork_i)$. Jelölje $\varepsilon$ az üres élt (amikor az automata egyik éle sem tüzel), ekkor $T_\varepsilon(\automatanetwork) = T(\automatanetwork) \cup \{ \varepsilon \}$
+
+\begin{definition}[Valós idejű teszt kiterjesztése]
+\label{ValósIdejűTesztKiterjesztés}
+Időzített automaták $\hat{\mathcal{A}}$ hálózatának $n \in \mathbb{N}^+$ hosszúságú $\hat{\mathcal{T}}$ valós idejű tesztje formálisan $\langle \hat{\mathcal{A}}, \hat{L}oc, \hat{A}ct, \hat{t} \rangle$, ahol
+
+\begin{itemize}
+    \item $\hat{\mathcal{A}}$ az időzítettautomata-hálózat, amin az időzített teszt fut,
+    \item $\hat{L}oc: \automatanetwork \rightarrow L(\automatanetwork)^n$  az automatahálózat minden $\automatanetwork_i$ automatájához egy $n$ elemű $\hat{L}oc(\automatanetwork_i)$ vezérlésihely-vektort rendel, amelynek $j.$ eleme megadja az $\automatanetwork_i$ automata aktív vezérlési helyét a teszt $j.$ lépésében, vagyis $\hat{L}oc(\automatanetwork_i)_j \in L(\automatanetwork_i)$, ahol $1 \leq i \leq |\automatanetwork|$ és $1 \leq j \leq n$,
+    %\item $\hat{L}oc$ az $\hat{\mathcal{A}}$ automatahálózat $n$ hosszú vezrélésihely-vektor sorozata, amelynek minden $\hat{L}oc_i$ eleme egy $|\hat{\mathcal{A}}|$ hosszú vektor, ahol $1 \leq i \leq n$. $\hat{L}oc_i_j$ az $\hat{\mathcal{A}}_j$ automata aktív vezérlési helye a teszt $i.$ lépésében, vagyis $\hat{L}oc_i_j \in L(\hat{\mathcal{A}}_j)$, ahol $1 \leq j \leq |\hat{\mathcal{A}}|$,
+    
+    %\item $\hat{A}ct$ az $\hat{\mathcal{A}}$ automatahálózat $n - 1$ hosszú élvektor sorozata, és minden $T_i$ él valamely $\hat{\mathcal{A}}_j$ automata éle, vagyis minden $i$-re $T_i \in T(\hat{\mathcal{A}}_j)$, ahol $1 \leq i \leq n - 1$ és $1 \leq j \leq |\hat{\mathcal{A}}|$,
+    
+    \item $\hat{A}ct: \automatanetwork \rightarrow T_\varepsilon(\automatanetwork)^{n-1}$  az automatahálózat minden $\automatanetwork_i$ automatájához egy $n-1$ elemű $\hat{A}ct(\automatanetwork_i)$ élvektort rendel (amelyben $\varepsilon$ jelöli az üres élt), amelynek $j.$ eleme megadja az $\automatanetwork_i$ automata által tüzelt élt a teszt $j.$ lépésében, vagyis $\hat{A}ct(\automatanetwork_i)_j \in T(\automatanetwork_i) \cup \{ \varepsilon \}$, ahol $1 \leq i \leq |\automatanetwork|$ és $1 \leq j \leq n$,
+    
+    %\item $\hat{A}ct$ az $\hat{\mathcal{A}}$ automatahálózat éleinek $n - 1$ hosszú sorozata, és minden $T_i$ él valamely $\hat{\mathcal{A}}_j$ automata éle, vagyis minden $i$-re $T_i \in T(\hat{\mathcal{A}}_j)$, ahol $1 \leq i \leq n - 1$ és $1 \leq j \leq |\hat{\mathcal{A}}|$,
+    \item $\hat{t}$ az időzítések $n$ hosszú sorozata, vagyis $|\hat{t}| = n$ és $\hat{t}_i \in \mathbb{R}_0^+$, ha $1 \leq i \leq n$, amely megadja, hogy az $i.$ lépésben $\hat{t}_i$ időt tölt minden $\automatanetwork_j$ automata a $\hat{L}oc(\automatanetwork_j)_i$ vezérlési helyen, ahol $1 \leq j \leq |\automatanetwork|$.
+\end{itemize}
+\end{definition}
+
+Egy $\automatanetwork$ automatahálózaton értelmezett $\networktest$ teszteset $i.$ lépésének szemantikája a $\test$-nél bemutatotthoz hasonlóan, ahol $1 \leq i \leq |\networktest|$:
+\begin{enumerate}
+    \item tüzel az automatahálózat minden $\automaton \in \automatanetwork$ automatájának $\hat{A}ct(\automaton)_{i - 1}$ éle, ha $i > 1$ és $\hat{A}ct(\automaton)_{i - 1} \neq \varepsilon$,
+    \item az automatahálózat minden $\automaton \in \automatanetwork$ automatája $\hat{t}_i$ ideig várakozik a $\hat{L}oc(\automaton)_{i}$ vezérlési helyen,
+    \item az automatahálózat minden $\automaton \in \automatanetwork$ automatájának óraváltozói $\hat{L}oc(\automaton)_{i}$-beli értékükre váltanak, vagyis az óraváltozók $\hat{L}oc(\automaton)_{i}$-beli értéke már a $\hat{t}_i$ időnyi várakozás utáni értékekre vonatkozik.
+\end{enumerate}
+
+Jelölje egy $\networktest$ valós idejű teszt esetén $\hat{A}(\networktest)$ azt az időzítettautomata-hálózatot, amelyen a teszt fut (vagyis $\hat{A}(\langle \automatanetwork, \hat{L}oc, \hat{A}ct, \hat{t} \rangle) = \automatanetwork$), $\hat{L}oc(\networktest)$ a teszt vezérlésihelyvektor-hozzárendelését, $\hat{A}ct(\networktest)$ a teszt élvektor-hozzárendelését, $\hat{t}(\networktest)$ a teszt időzítéseinek sorozatát, $|\networktest| = |\hat{L}oc(\hat{A}(\networktest)_i)|$ a teszt hosszát (ahol $1 \leq i \leq |\hat{A}(\networktest)|$), $\hat{L}oc_s(\networktest) = \bigcup\limits_{i = 1}^{|\hat{A}(\networktest)|} \hat{L}oc(\hat{A}(\networktest)_i)$ pedig a teszt által lefedett vezérlési helyek halmazát.
+
+Megjegyzendő, hogy míg egyetlen $\automaton$ időzített automatán futó $\test$ teszt esetén a teszt vezérlési helyek és élek alternáló sorozata, időzített automaták $\automatanetwork$ hálózatán futó $\networktest$ teszt esetén egy adott lépésben a rendszer aktív vezérlési helyeit az összes automata aktív vezérlési helye együttesen határozza meg.
+
+Hasonlóan kiemelendő, hogy utóbbi esetben a teszt egy lépésében több $\automatanetwork_i$ automatának ($1 \leq i \leq |\hat{A}(\networktest)|$) is tüzelhet éle (vagyis egy adott $j.$ lépésben ($1 \leq j \leq |\networktest| - 1$) $k$ számú $\automatanetwork_i$ automatára is fennállhat, hogy $\hat{A}ct(\automatanetwork_i)_j \neq \varepsilon$, ahol $1 \leq k \leq |\hat{A}(\networktest)|$). Ez teszi lehetővé, hogy egy automatahálózat automatái élekkel szinkronizálják működésüket, vagyis automaták egy-egy éle \emph{egyszerre} tüzeljen.
+
+Egy $\networktest$ teszteset hossza (időben) a lépésekben eltöltött várakozási idők összege, vagyis $time(\networktest) = \sum\limits_{i = 1}^{|\networktest|} \hat{t}_i$.
+
+\begin{definition}[Valós idejű teszt valódiságának kiterjesztése]
+\label{ValódiTesztKiterjesztés}
+Egy $\networktest$ valós idejű teszt \emph{valódi}, ha az $\hat{A}(\networktest)$ időzítettautomata-hálózatnak valóban van olyan lefutása, amit a teszt leír, vagyis 
+\begin{itemize}
+    \item $\hat{L}oc(\hat{A}(\networktest)_i)_1 = l_0(\hat{A}(\networktest)_i)$, vagyis az $\hat{A}(\networktest)$ időzítettautomata-hálózat minden $\hat{A}(\networktest)_i$ automatájának vezérlésihely-vektorának első eleme az automata kezdő vezérlési helye, ahol $1 \leq i \leq |\hat{A}(\networktest)|$,
+    %\item OFF $\hat{L}(\hat{\mathcal{T}})_1_i = l_0(\hat{A}(\hat{\mathcal{T}})_i)$, vagyis a $\hat{\mathcal{T}}$ teszt első vezérlésihely-vektora az $\hat{A}(\hat{\mathcal{T}})$ automatahálózat minden $\hat{A}(\hat{\mathcal{T}})_i$ automatájának a kezdő vezérlési helyét tartalmazza, ahol $1 \leq i \leq |\hat{A}(\hat{\mathcal{T}})|$,
+    \item minden $\hat{A}(\networktest)_i$ automata minden $\hat{L}oc(\hat{A}(\networktest)_i)_j$ vezérlési helyén lehetővé teszik az automata $I(\hat{A}(\networktest)_i)$ invariánsai a $\hat{t}_j$ ideig történő várakozást (vagyis minden $\hat{A}(\networktest)_i$ időzített automatának van $\langle \hat{L}oc(\hat{A}(\networktest)_i)_j, u \rangle \rightarrow \langle \hat{L}oc(\hat{A}(\networktest)_i)_j, u + \hat{t}_j \rangle$ állapotátmenete, ahol $u$ jelöli az óraváltozók állását, amikor a teszt $j.$ lépésben az automata a $\hat{L}oc(\hat{A}(\networktest)_i)_j$ vezérlési helyre lép), ahol $1 \leq i \leq |\hat{A}(\networktest)|$ és $1 \leq j \leq |\networktest|$,
+    %\item minden $L(\mathcal{T})_i$ vezérlési helyen $t(\mathcal{T})_i$ ideig történő várakozást lehetővé teszik az $A(\mathcal{T})$ automata $I(A(\mathcal{T}))$ invariánsai (vagyis az $A(\mathcal{T})$ időzített automatának van $\langle L(\mathcal{T})_i, u \rangle \rightarrow \langle L(\mathcal{T})_i, u + t(\mathcal{T})_i \rangle$ állapotátmenete, ahol $u$ jelöli az óraváltozók állását, amikor a teszt az $i$. lépésben az $L(\mathcal{T})_i$ vezérlési helyre lép),
+    \item minden $\hat{A}ct(\hat{A}(\networktest)_i)_j$ élhez van olyan éle az $\hat{A}(\networktest)_i$ automatának, amely a $\hat{L}oc(\hat{A}(\networktest)_i)_j$ vezérlési helyből a $\hat{L}oc(\hat{A}(\networktest)_i)_{j+1}$ vezérlési helybe vezet, és $\hat{L}oc(\hat{A}(\networktest)_i)_j$ vezérlési helyen $\hat{t}_j$ ideig való várakozás után tüzelhető (vagyis minden $\hat{A}(\networktest)_i$ időzített automatának van $\langle \hat{L}oc(\hat{A}(\networktest)_i)_j, u \rangle \rightarrow \langle \hat{L}oc(\hat{A}(\networktest)_i)_{j+1}, u' \rangle$ állapotátmenete, ahol $u$ jelöli az óraváltozók állását, amikor a teszt $j.$ lépésében az $\hat{A}(\networktest)_i$ automata $\hat{t}_j$ időt eltöltött a $\hat{L}oc(\hat{A}(\networktest)_i)_j$ vezérlési helyen), ahol $1 \leq i \leq |\hat{A}(\networktest)|$ és $1 \leq j \leq |\networktest| - 1$.
+    %\item minden $T(\mathcal{T})_i$ élhez van olyan éle az $A(\mathcal{T})$ automatának, amely $L(\mathcal{T})_i$ vezérlési helyből $L(\mathcal{T})_{i+1}$ vezérlési helybe vezet, és $L(\mathcal{T})_i$ vezérlési helyen $t(\mathcal{T})_i$ ideig való várakozás után tüzelhető (vagyis az $A(\mathcal{T})$ időzített automatának van $\langle L(\mathcal{T})_i, u \rangle \rightarrow \langle L(\mathcal{T})_{i+1}, u' \rangle$ állapotátmene, ahol $u$ jelöli az óraváltozók állását, amikor a teszt az $i$. lépésben $t(\mathcal{T})_i$ időt eltöltött $L(\mathcal{T})_i$ vezérlési helyen).
+\end{itemize}
+\end{definition}
+
+\begin{definition}[Valós idejű tesztkészlet kiterjesztése]
+\label{TesztkészletKiterjesztés}
+Egy $\automatanetwork$ időzítettautomata-hálózat $n$ elemű $\networktestset$ \emph{valós idejű tesztkészlete} valós idejű tesztek $n \in \mathbb{N}^+$ elemű halmaza ($|\networktestset| = n$), amelynek minden $\networktestset_i$ tesztjére $\hat{A}(\networktestset_i) = \automatanetwork$, ahol $1 \leq i \leq n$.
+\end{definition}
+
+A valós idejű tesztek tulajdonságait ezúttal is kiterjeszthetjük a valós idejű tesztkészletekre. Jelöljön $\networktestset$ egy valós idejű tesztkészletet.
+\begin{itemize}
+    \item $\hat{A}(\networktestset) = \hat{A}(\networktestset_i)$, ahol $1 \leq i \leq |\networktestset|$
+    \item $\hat{L}oc_s(\networktestset) = \bigcup\limits_{i = 1}^{|\networktestset|} \hat{L}oc_s(\networktestset_i)$ a $\networktestset$ által lefedett vezérlési helyek halmaza
+    \item $\networktestset$ \emph{valódi}, ha minden $\networktestset_i$ tesztje valódi, ahol $1 \leq i \leq |\networktestset|$
+\end{itemize}
+
+\section{A tesztkészlet elvárt tulajdonságai} \label{kovetelmenyek}
+
+Tekintsük a tesztgenerálási folyamatot egy $TG: \automatanetwork \rightarrow \networktestset$ hozzárendelésnek, ahol $\automatanetwork$ a bemenetként kapott időzítettautomata-hálózat, $\networktestset$ pedig az $\automatanetwork$ hálózat kimenetként generált valós idejű tesztkészlete.
+
+A $\networktestset$ valós idejű tesztkészlettel szemben több elvárást is támasztunk:
+
+\begin{enumerate}
+    \item \label{kov:valodi} $\networktestset$ legyen valódi, vagyis a tesztek valóban $\automatanetwork$ lefutásai legyenek,
+    \item \label{kov:fedes} $\networktestset$ fedje le $\automatanetwork$ összes \emph{elérhető} vezérlési helyét, vagyis ha minden vezérlési hely elérhető, akkor $\hat{L}oc_s(\networktestset) = L(\automatanetwork)$,
+    \item \label{kov:tesztekhossza} $\networktestset$ tesztjei minél rövidebbek legyenek, vagyis $\min |\networktestset_i|$, ahol $1 \leq i \leq |\networktestset|$,
+    \item \label{kov:tesztekszama} $\networktestset$ minél kevesebb tesztből álljon, vagyis $\min |\networktestset|$,
+    \item \label{kov:tesztekideje} $\networktestset$ tesztjei minél rövidebb ideig fussanak, vagyis $\min time(\networktestset_i)$, ahol $1 \leq i \leq |\networktestset|$,
+    \item \label{kov:prefixteszt} (\ref{kov:tesztekszama}. követekzménye) $\networktestset$ egyik tesztje se legyen prefixe egy másiknak, vagyis $\nexists \networktestset_i, \networktestset_j$, hogy $\forall k, l: \hat{L}oc(\networktestset_i)(\hat{A}(\networktestset)_k)_l = \hat{L}oc(\networktestset_j)(\hat{A}(\networktestset)_k)_l$, ahol $1 \leq i \neq j \leq |\networktestset|$, $1 \leq k \leq |\hat{A}(\networktestset)|$ és $1 \leq l \leq |\networktestset_i|$.
+\end{enumerate}
+
+\section{A tesztek útvonala} \label{teszt-utvonal}
+
+Az $\automatanetwork$ automatahálózat helyesen címkézett ASG-jének bejárásával keressük meg azokat az absztrakt lefutásokat, amelyek konkrét időzítés után $\networktestset$ tesztjei lesznek.
+
+Jelölje $G = \langle V, E, v_0, M_v, M_e, \rhd, \psi_Z, \psi_W \rangle$ az $\automatanetwork$ hálózat helyesen címkézett ASG-jét. Jelölje $V(G)$ $V$-t, $E(G)$ $E$-t, $v_0(G)$ $v_0$-t stb., $\hat{A}(G)$ pedig azt az időzítettautomata-hálózatot, amelyet $G$ reprezentál.
+
+Legyen $v \in V$ a $G$ ASG egy csúcsa. Jelölje $\textsc{Children}(v)$ azoknak a $V$-beli csúcsoknak a halmazát, amelyekbe vezet él $v$-ből, $\textsc{Ancestor}(v)$ azt a $V$-beli csúcsot, amelyből vezet él $v$-be, $\textsc{InEdge}(v)$ pedig azt az $E$-beli élt, amely $v$-be vezet.
+
+Jelölje továbbá $\hat{L}oc(v): \automatanetwork \rightarrow L(\automatanetwork)$ azt a hozzárendelést, amely az $\automatanetwork$ hálózat minden automatájára megadja, hogy a $v$ csúcs által reprezentált absztrakt állapotban az automata melyik vezérlési helye aktív.
+
+Legyen $e \in E$ a $G$ ASG egy éle. Jelölje $\hat{A}ct(e): \automatanetwork \rightarrow T_\varepsilon(\automatanetwork)$ azt a hozzárendelést, amely az $\automatanetwork$ hálózat minden automatájára megadja, hogy az $e$ él által reprezentált absztrakt élen az automata melyik éle tüzel ($\varepsilon$ jelöli azt, hogy egyik sem).
+
+$G$ egy $v \in V$ csúcsa egy olyan absztrakt állapotot ír le, amelyben az $\automatanetwork$ hálózat $M_v(v)$ vezérlési helyei aktívak, egy $e \in E$ éle pedig egy olyan absztrakt átmenetet, amely során az $\automatanetwork$ hálózat $M_e(e)$ élei tüzelnek. $G$-beli úton egy $(V, E)$-beli utat értünk, vagyis $V$-beli csúcsok és $E$-beli élek alternáló sorozatát.
+
+Egy $G$-beli út egy absztrakt (konkrét időzítés nélküli) tesztesetet ír le, vagyis meghatározza a $\networktest$ teszteset $\hat{L}oc(\networktest)$ és $\hat{A}ct(\networktest)$ hozzárendeléseit, míg a konkrét $\hat{t}(\networktest)$ időzítést majd csak a konkretizálás fogja meghatározni.
+
+Egy $(K \mapsto V)$ kulcs-érték párokat tartalmazó $M$ \emph{map} (hozzárendelés) esetén $\textsc{Keys}(M)$ a $K$ kulcsok halmazát, míg $\textsc{Values}(M)$ a $V$ értékek halmazát jelöli. $M(K) = V$, ha $(K \mapsto V) \in M$.
+
+Az üres \emph{listát}  $[\ ]$ jelöli, egy $X$ lista esetén az $a$ elem beszúrását a lista elejére az $X \gets [a, X]$, a lista végére pedig az $X \gets [X, a]$ művelet jelöli.
+
+A tesztkészlet-generálás \textsc{GenerateTests} algoritmusát az \ref{GenerateTests}. algoritmus írja le, amely felhasználja a \ref{GenerateTest}. algoritmusban leírt \textsc{GenerateTest} segédeljárást, amely egy adott ASG-csúcshoz generál tesztet.
+
+A $\networktestset$-vel szemben támasztott \ref{kov:fedes}. követelmény miatt addig kell új teszteseteket (utakat) keresnünk $G$-ben, amíg minden $L(\automatanetwork)$-beli vezérlési helyet lefed már legalább egy teszteset vagy a teljes $G$ ASG-t bejártuk (amennyiben $G$ teljes bejárása után sem találtunk egy vezérlési helyhez azt fedő utat, a vezérlési hely nem elérhető, vagyis a lefedése nélkül is teljesítjük \aref{kov:fedes}. követelményt). A $locTests: L(\automatanetwork) \rightarrow \networktestset$ hozzárendelés $\automatanetwork$ minden vezérlési helyére megad egy azt fedő $\networktestset_i$ tesztesetet.
+
+$G$-t szélességi bejárással járjuk be (amíg szükséges), hogy a kapott tesztesetek a lehető legrövidebbek legyenek (\ref{kov:tesztekhossza}. követelmény). A $nodesToProcess$ halmaz tartalmazza az éppen feldolgozandó csúcsokat, $nextNodes$ halmaz pedig a következő lépésben feldolgozandókat ($nextNodes$-ba kerülnek a $nodesToProcess$-ből elérhető csúcsok). $G$ teljes bejárását az jelzi, ha egy iteráció után $nodesToProcess = \emptyset$.
+
+Egy $node$ csúcs feldolgozása során először egy időzítetlen $\networktest$ tesztet generálunk hozzá a \textsc{GenerateTest} eljárás segítségével, majd a $\networktest$ által fedett $\hat{L}oc_s(\networktest)$ vezérlési helyekre frissítjük a $locTests$-et, hogy minden $l \in \hat{L}oc_s(\networktest)$-re $locTests(l) = \networktest$ legyen. Ezt a frissítést azokra a vezérlési helyekre is elvégezzük, amelyeket már lefedett egy korábban megtalált teszt, hogy az eredményül kapott tesztkészlet megfeleljen a \ref{kov:tesztekszama}. és \ref{kov:prefixteszt}. követelménynek.
+
+Minden tesztgenerálás után leellenőrizzük, hogy lefedtünk-e már minden vezérlési helyet, és amennyiben igen, kilépünk a ciklusból. Amennyiben az ASG végére értünk ($nodesToProcess = \emptyset$), szintén leáll az algoritmus. Végül a $locTests$ mapben értékként tárolt időzítetlen tesztek időzítését a \textsc{CalculateDelays} eljárással kiszámítjuk, majd az így kapott valós idejű tesztek $realTimeTests$ halmazát adjuk eredményül, amely egy az elvárásokat kielégítő tesztkészlet.
+
+Az ASG felderítése során azért időzítés nélküli teszteseteket generálunk, mert a korábban megtalált teszteseteket a későbbi generálások során még eldobhatjuk, az időzítést leíró SMT probléma megoldása pedig számításigényes feladat. Így viszont biztosan csak az eredmény tesztkészletben ténylegesen szereplő tesztesetek időzítését számítjuk ki.
+
+\begin{algorithm}[t]
+\DontPrintSemicolon
+\caption{{\sc GenerateTests} Valós idejű tesztkészlet generálása időzített automaták hálózatához} \label{GenerateTests}
+\KwIn{Időzített automaták $\automatanetwork$ hálózatát leíró $G = \langle V, E, v_0, M_v, M_e, \rhd, \psi_Z, \psi_W \rangle$ ASG ($\hat{A}(G) = \automatanetwork$)}
+\KwOut{Az $\automatanetwork$ hálózat $\networktestset$ valós idejű tesztkészlete ($\hat{A}(\networktestset) = \automatanetwork$)}
+\SetKwProg{GenerateTests}{GenerateTests}{}{}
+
+\GenerateTests{$(G)$}{
+ $locTests \gets \emptyset$\;
+ $nodesToProcess \gets \{ v_0(G) \}$\;
+ $nextNodes \gets \emptyset$\;
+ \While{$|locTests| < |L(\automatanetwork)| \land nodesToProcess \neq \emptyset$}{
+  \ForEach{$node \in nodesToProcess$} {
+   $\networktest \gets \textsc{GenerateTest}(G, node)$\;
+   \ForEach{$loc \in \hat{L}oc_s(\networktest)$}{ \label{GenerateTests:locTestsForEach}
+    $locTests \gets locTests \setminus \{ (loc \mapsto locTests(loc)) \} \cup \{ (loc \mapsto \networktest) \}$\;
+    \tcp*{$loc$ leképezésének beállítása $\networktest$-ra}
+   }
+   \ForEach{$child \in \textsc{Children}(node)$}{
+    $nextNodes \gets nextNodes \cup \{ child \}$\;
+   }
+   \If{$|locTests| = |L(\automatanetwork)|$}{
+    \textbf{break}\;
+   }
+  }
+  $nodesToProcess \gets nextNodes$\;
+  $nextNodes \gets \emptyset$\;
+ }
+ $realTimeTests \gets \emptyset$\;
+ \ForEach{$\langle \automatanetwork, \hat{L}oc, \hat{A}ct, [\ ] \rangle \in \textsc{Values}(locTests)$}{
+  $\hat{t} \gets \textsc{CalculateDelays}(\automatanetwork, \hat{L}oc, \hat{A}ct)$\;
+  $realTimeTests \gets realTimeTests \cup \{ \langle \automatanetwork, \hat{L}oc, \hat{A}ct, \hat{t} \rangle \}$
+ }
+\Return{$realTimeTests$}\;
+}
+\end{algorithm}
+
+\begin{algorithm}[t]
+\DontPrintSemicolon
+\caption{{\sc GenerateTest} Időzítés nélküli teszt generálása adott ASG-csúcshoz} \label{GenerateTest}
+\KwIn{Időzített automaták $\automatanetwork$ hálózatát leíró $G = \langle V, E, v_0, M_v, M_e, \rhd, \psi_Z, \psi_W \rangle$ ASG ($\hat{A}(G) = \automatanetwork$), $node$ ASG-csúcs ($node \in V$)}
+\KwOut{A $node$ absztrakt állapotba vezető időzítés nélküli $\networktest$ teszt}
+\SetKwProg{GenerateTest}{GenerateTest}{}{}
+
+\GenerateTest{$(G, node)$}{
+
+$\hat{L}oc \gets \emptyset$\;
+$\hat{A}ct \gets \emptyset$\;
+\ForEach{$\automaton \in \automatanetwork$}{
+ $\hat{L}oc \gets \hat{L}oc \cup \{ (\automaton, [\ ]) \}$\;
+ $\hat{A}ct \gets \hat{A}ct \cup \{ (\automaton, [\ ]) \}$\;
+}
+
+$running \gets node$\;
+\ForEach{$\automaton \in \automatanetwork$}{
+ $\hat{L}oc(\automaton) \gets [ \hat{L}oc(\automaton) ]$
+}
+
+\While{$\textsc{Ancestor}(running) \neq null$}{
+ $inEdge \gets \textsc{InEdge}(running)$\;
+ $running \gets \textsc{Ancestor}(running)$\;
+ \ForEach{$\automaton \in \automatanetwork$}{
+  $\hat{A}ct(\automaton) \gets [ \hat{A}ct(inEdge)(\automaton), \hat{A}ct(\automaton) ]$\;
+  $\hat{L}oc(\automaton) \gets [ \hat{L}oc(running)(\automaton), \hat{L}oc(\automaton) ]$\;
+ }
+}
+
+%$\hat{t} \gets \textsc{CalculateDelays}(\hat{A}(G), \hat{L}oc, \hat{A}ct)$\;
+$\networktest \gets \langle \hat{A}(G), \hat{L}oc, \hat{A}ct, [\ ] \rangle$\;
+\Return{$\networktest$}\;
+}
+\end{algorithm}
+
+\section{A tesztek időzítése} \label{teszt-idozites}
+
+Az előzőekben ismertetett módon megkapott absztrakt teszteset még csak azt határozza meg, hogy az adott lépésekben az automatahálózat melyik vezérlési helyei aktívak, illetve melyik élei tüzelnek. Ahhoz, hogy ebből konkrét, valós idejű tesztet kapjunk, konkrét időzítéseket kell rendelnünk hozzá, amelyek meghatározzák, hogy az egyes lépések között mennyi idő telik el (vagyis egy adott lépésben mennyi időt töltenek el az automaták az éppen aktív vezérlési helyükön).
+
+Az \ref{kov:tesztekideje}. követelmény miatt egy $\networktest$ absztrakt teszteset konkretizálása során minimális $time(\networktest)$-ra kell törekednünk. Ezt úgy érjük el, hogy a megtalált megoldást (időzítést) a várakozások összegére vonatkozó kényszerrel $time(\networktest) < MAX$ megpróbáljuk tovább rövidíteni, amíg ez lehetséges.
+
+Megjegyzendő, hogy egy teszt össz. idejének nem biztos, hogy létezik minimuma, pl. ha egy élen az $x$ óraváltozóra vonatkozóan az $x > 1$ őrfeltétel szerepel. A megtalált megoldás javítása során figyelnünk kell tehát arra, hogy az algoritmus leálljon, vagyis érzékelje, ha ugyan sikerült még javítania az össz. időn, de a javítás már egy bizonyos küszöb alatti. A küszöb meghatározásakor érdemes felhasználni, hogy az óraváltozókra vonatkozó kényszerekben csak egész számok szerepelhetnek.
+
+\section{Visszavezetés SMT problémákra} \label{teszt-smt}
+
+Egy absztrakt teszt konkretizálása egy SMT-probléma megoldását jelenti, amelyben a változók a hálózat óraváltozói, a kényszerek pedig a vezérlési helyek invariánsaiból, az élek őrfeltételeiből valamint az élek óraváltozó-lenullázásaiból származnak.
+
+\subsection{Zónák, mint SMT problémák}
+
+Egy időzített automata szimbolikus állapotának zónája az óraváltozókra vonatkozó kényszerek (egyenlőtlenségek) halmazát jelenti, vagyis egy zóna önmagában is egy SMT probléma.
+
+Egy $\automatanetwork$ automatahálózat $\langle \hat{l}, \hat{\mathcal{Z}} \rangle$ szimbolikus állapota (amit a hálózat ASG-jének egy $v \in V$ csúcsa reprezentál) a hálózatbeli $\automatanetwork_i$ automaták egy-egy $\langle l, \mathcal{Z} \rangle$ szimbolikus állapotának összessége, ahol $1 \leq i \leq |\automatanetwork|$. A hálózat egy $\langle \hat{l}, \hat{\mathcal{Z}} \rangle$ szimbolikus állapotának $\hat{\mathcal{Z}}$ zónája az $\langle \hat{l}, \hat{\mathcal{Z}} \rangle$-be tartozó $\langle l, \mathcal{Z} \rangle$ szimbolikus állapotok $\mathcal{Z}$ zónáinak metszete (vagyis a $\hat{\mathcal{Z}}$-t meghatározó kényszerhalmaz (egyenlőtlenséghalmaz) a $\mathcal{Z}$-ket leíró kényszerhalmazok (egyenlőtlenséghalmazok) uniója).
+
+Egy $\langle \hat{l}, \hat{\mathcal{Z}} \rangle$ szimbolikus állapot konkretizálása az $\langle \hat{l}, \hat{\mathcal{Z}} \rangle$-beli összes $\langle l, \mathcal{Z} \rangle$ szimbolikus állapot $\langle l, u \rangle$ állapottá konkretizálását jelenti, vagyis minden $\hat{\mathcal{Z}}$-beli $\mathcal{Z}$ zóna konkretizálását egy konkrét $u$ óraállássá, ahol minden $\langle l, u \rangle$-beli $u$ megegyezik.
+
+\subsection{Tesztek, mint SMT problémák sorozatai}
+
+Egy $\networktest$ valós idejű teszt az $\automatanetwork$ automatahálózat állapotainak és éleinek sorozata. A tesztet leíró kényszerhalmaz minden állapot zónájának kényszereiből és az élek kényszereiből áll.
+
+Jelölje egy $\automaton$ időzített automata óraváltozóinak halmazát $\mathcal{C}(\automaton)$, $\hat{\mathcal{C}}(\automatanetwork) = \bigcup\limits_{i = 1}^{|\automatanetwork|} \mathcal{C}(\automatanetwork_i)$ pedig egy $\automatanetwork$ időzítettautomata-hálózat óraváltozóinak összességét. Egy $\automatanetwork$ hálózaton futó $|\networktest|$ hosszú $\networktest$ teszt esetén jelölje minden $x \in \hat{\mathcal{C}}(\automatanetwork)$ óraváltozóra $x_i$ az óraváltozó értékét a teszt $i.$ lépésében, ahol $1 \leq i \leq |\networktest|$. 
+
+$\networktest = \langle \hat{\mathcal{A}}, \hat{L}oc, \hat{A}ct, \hat{t} \rangle$ konkretizálása, vagyis $\hat{t}$ meghatározása egy olyan kényszerrendszer megoldását jelenti, amely kényszereinek forrásai:
+\begin{itemize}
+    \item minden $x \in \hat{\mathcal{C}}(\automatanetwork)$ óraváltozó kezdeti értéke megegyezik $\hat{t}_1$-gyel, vagyis $x_1 = \hat{t}_1$, hiszen az első lépésben is várakozhat a teszteset, és a szemantikát úgy definiáltuk, hogy az $i.$ lépésben az óraváltozók állása a $\hat{t}_i$ időnyi várakozás után értelmezendő,
+    \item minden $i.$ lépésben ($1 \leq i \leq |\networktest|$) minden $\automaton \in \automatanetwork$ automata aktív vezérlési helyének minden invariánsának teljesülnie kell (az $I(\automaton)(\hat{L}oc(\automaton)_i)$ invariánsokat a $\mathcal{C}(\automaton)$-beli óraváltozók $i.$ értékeire értve),
+    \item minden $i.$ lépésben ($1 \leq i \leq |\networktest| - 1$) minden $\automaton \in \automatanetwork$ automata tüzelő élének (amennyiben van ilyen) minden őrfeltételének teljesülnie kell (a $G(\hat{A}ct(\automaton)_i)$ őrfeltételeket a $\mathcal{C}(\automaton)$-beli óraváltozók $i.$ értékeire értve, ha $\hat{A}ct(\automaton)_i \neq \varepsilon$, ahol egy $a$ élre $G(a)$ jelöli az él őrfeltételeinek halmazát),
+    \item minden $\automaton \in \automatanetwork$ automata minden $x \in \mathcal{C}(\automaton)$ óraváltozójának $i.$ és $i + 1$. lépésben felvett $x_i$ és $x_{i+1}$ értéke között a következő kapcsolat áll fenn, ahol $1 \leq i \leq |\networktest| - 1$ és egy $a$ élre $\mathcal{R}(a)$ jelöli az él által lenullázott óraváltozók halmazát:
+    \begin{itemize}
+        \item ha $\hat{A}ct(\automaton)_i \neq \varepsilon$ és $x \in \mathcal{R}(\hat{A}ct(\automaton)_i)$, $x_{i+1} = \hat{t}_i$,
+        \item ha $\hat{A}ct(\automaton)_i = \varepsilon$ vagy $x \notin \mathcal{R}(\hat{A}ct(\automaton)_i)$, $x_{i+1} = x_i + \hat{t}_i$.
+    \end{itemize}
+\end{itemize}
+
+Ennek a kényszerrendszernek (SMT problémának) a megoldása megadja a $\networktest$ teszteset $\hat{t}$ időzítését, vagyis konkretizálja a tesztesetet. Egy óraváltozókra vonatkozó $X$ kényszerhalmaz esetén jelölje $\textsc{Index}_i(X)$ azt a kényszerhalmazt, melynek minden kényszerében minden $x$ óraváltozó helyett annak az $i.$ értéke ($x_i$) szerepel.
+
+Egy $\networktest$ teszteset konkretizálásának ($\hat{t}(\networktest)$ kiszámításának) \textsc{CalculateDelays} segédeljárását a \ref{CalculateDelays}. algoritmus írja le. \textsc{CalculateDelays} felhasználja a \textsc{Solve} eljárást, amely egy SMT problémát old meg (bemenete változókra vonatkozó kényszerek halmaza, kimenete a változók kiértékelése). A \textsc{CalculateDelays} eljárás során a fentiekben leírt kényszereket adjuk hozzá a kényszerhalmazhoz:
+\begin{itemize}
+    \item a kezdő várakozásokra vonatkozó egyenlőségeket,
+    \item a vezérlési helyek invariánsait,
+    \item az élek őrfeltételeit,
+    \item az élek által lenullázott óraváltozók következő értékére vonatkozó feltételeket,
+    \item az élek által nem lenullázott óraváltozók következő értékére vonatkozó feltételeket.
+\end{itemize}
+
+A \textsc{CalculateDelays} eljárás felhasználja a \textsc{ReduceDelays} eljárást, amely a már összeállított kényszerhalmazt kielégítő megoldást próbálja tovább javítani (az össz. időt csökkenteni) \aref{kov:tesztekideje}. követelmény teljesítése érdekében.
+
+Egy már konkretizált $\networktest$ teszteset $time(\networktest)$ össz. idejének minimalizálásának \textsc{ReduceDelays} eljárását a \ref{ReduceDelays}. algoritmus írja le. A $\textsc{Satisfiable}(constraints)$ eljárás eredménye, hogy a $constraints$ kényszerhalmaz által meghatározott SMT probléma megoldható-e.
+
+A \textsc{ReduceDelays} eljárás addig felezi $time(\networktest)$ lehetséges intervallumát, amíg a felezés még legalább $0{,}5$ intervallumcsökkenést eredményez. \textsc{Push} és \textsc{Pop} az SMT megoldó korábban bemutatott eljárásai.
+
+\begin{algorithm}[t]
+\DontPrintSemicolon
+\caption{{\sc CalculateDelays} Valós idejű teszt konkretizálása} \label{CalculateDelays}
+\KwIn{Időzített automaták $\automatanetwork$ hálózata, $\automatanetwork$-n értelmezett $\hat{L}oc$ vezérlésihelyvektor-hozzárendelés és $\hat{A}ct$ élvektor-hozzárendelés}
+\KwOut{A teszt időzítéseinek $n$ hosszú $\hat{t}$ sorozata}
+\SetKwProg{CalculateDelays}{CalculateDelays}{}{}
+
+\CalculateDelays{$(\automatanetwork, \hat{L}oc, \hat{A}ct)$}{
+
+$constraints \gets \emptyset$\;
+\ForEach{$x \in \hat{\mathcal{C}}(\automatanetwork)$}{
+ $constraints \gets constraints \cup \{ x_1 = \hat{t}_1 \}$\;
+}
+
+\ForEach{$\automaton \in \automatanetwork$}{
+ %1. loc
+ $constraints \gets constraints \cup \textsc{Index}_1(I(\automaton)(\hat{L}oc(\automaton)_1))$\;
+ \For{$i \gets 2$ \textbf{to} $|\hat{L}oc(\automaton)|$}{
+  %i. loc, i-1. act
+   $constraints \gets constraints \cup \textsc{Index}_i(I(\automaton)(\hat{L}oc(\automaton)_i))$\;
+   \If{$\hat{A}ct(\automaton)_i \neq \varepsilon$}{
+    $constraints \gets constraints \cup \textsc{Index}_{i-1}(G(\hat{A}ct(\automaton)_{i-1}))$\;
+   }
+   \ForEach{$x \in \mathcal{C}(\automaton)$}{
+    \uIf{$\hat{A}ct(\automaton)_i \neq \varepsilon \land x \in \mathcal{R}(\hat{A}ct(\automaton)_i)$}{
+     $constraints \gets constraints \cup \{ x_i = \hat{t}_{i-1} \}$\;
+    }
+    \Else{
+     $constraints \gets constraints \cup \{ x_i = x_{i-1} + \hat{t}_{i-1} \}$\;
+    }
+   }
+ }
+}
+
+$valuation \gets \textsc{Solve}(constraints)$\;
+$valuation \gets \textsc{ReduceDelays}(constraints, |\hat{L}oc|, valuation)$\;
+$delays \gets valuation(\hat{t})$\;
+\Return{$delays$}\;
+}
+\end{algorithm}
+
+\begin{algorithm}[t]
+\DontPrintSemicolon
+\caption{{\sc ReduceDelays} Valós idejű teszt javítása} \label{ReduceDelays}
+\KwIn{A tesztesetet leíró $constraints$ kényszerhalmaz, a teszteset $n$ hossza, a tesztesetet leíró változók $valuation$ kiértékelése az első talált megoldásban}
+\KwOut{A tesztesetet leíró változók javított kiértékelése}
+\SetKwProg{ReduceDelays}{ReduceDelays}{}{}
+
+\ReduceDelays{$(constraints, n, valuation)$}{
+$min \gets 0$\;
+$max \gets \sum\limits_{i = 1}^{n} valuation(\hat{t})_i$\;
+$newMax \gets min + (max - min) / 2$\;
+$bestValuation \gets valuation$\;
+
+\While{$max - newMax \geq 0,5$}{
+ $\textsc{Push}(constraints)$\;
+ $constraints \gets constraints \cup \{ \sum\limits_{i = 1}^{n} \hat{t}_i \leq newMax \}$\;
+ 
+ \uIf{$\textsc{Satisfiable}(constraints)$}{
+  $bestValuation \gets \textsc{Solve}(constraints)$\;
+  $max \gets \sum\limits_{i = 1}^{n} bestValuation(\hat{t}_i)$\;
+ }
+ \Else{
+  $min \gets newMax$\;
+ }
+ $newMax \gets min + (max - min) / 2$\;
+ $\textsc{Pop}()$\;
+}
+\Return{$bestValuation$}\;
+}
+\end{algorithm}
+
+\section{A tesztkészlet elvárt tulajdonságainak teljesülése} \label{kovetelmenyek-telj}
+
+Vizsgáljuk meg, hogy a fentiekben bemutatott módszerrel generált $\networktestset$ tesztkészlet miképp teljesíti a vele szemben a \ref{kovetelmenyek}. fejezetben támasztott követelményeket.
+
+Az \ref{GenerateTests}. algoritmusban bemutatott \textsc{GenerateTests} eljárás kapcsán fontos megvizsgálni, hogy az eljárás biztosan leáll-e. Mivel a \ref{def:ASG}. definíció szerint az ASG $(V, E)$ gráfja fa (vagyis összefüggő is), a gyökeréből induló szélességi bejárással bejárjuk az egész fát. Vagyis amennyiben az automatahálózat minden elérhető vezérlési helye megjelenik az ASG gráfjának élcímkézésében, a bejárás során biztosan érintünk minden elérhető vezérlési helyet, így generálunk is hozzá legalább egy tesztesetet, vagyis amennyiben minden vezérlési hely elérhető, legkésőbb a bejárás végére teljesül, hogy $|locTests| = |L(\automatanetwork)|$. Az ASG élcímkézésében pedig meg kell jelennie minden elérhető vezérlési helynek, mert ez a helyes címkézés szükséges feltétele. Az algoritmus mindenképp leáll, legkésőbb, amikor végzett az ASG bejárásával.
+
+A továbbiakban vizsgáljuk meg a \ref{kovetelmenyek}. fejezetben leírt számozott követelményeket.
+
+\begin{enumerate}
+    \item $\networktestset$ valódisága: Ha az ASG helyesen címkézett, akkor egy vezérlési hely elérhetősége ekvivalens a vezérlési hellyel címkézett megfelelő ASG-csúcs meglétével, vagyis egy ASG-beli út megfeleltethető egy szimbolikus lefutásnak. Az időzítés helyességét pedig az garantálja, hogy a lefutás konkretizálásakor figyelembe vesszük az ASG-beli út összes kényszerét.
+    \item Minden elérhető vezérlési hely fedése ($\hat{L}oc_s(\networktestset) = L(\automatanetwork)$, ha $L(\automatanetwork)$ minden vezérlési helye elérhető): A \textsc{GenerateTests} eljárás addig fut, amíg a $locTests$ map már minden vezérlési helyhez tartalmaz tesztet vagy amíg az ASG végére nem ér. Egy vezérlési helyhez pedig csak olyan tesztet rendelünk, ami valóban fedi azt (lásd $\textbf{foreach}\ child \in \textsc{Children}(node)$ bejárás az \ref{GenerateTests}. algoritmus \ref{GenerateTests:locTestsForEach}. sorában), az ASG teljes bejárása során pedig minden elérhető vezérlési helyet érintünk, vagyis tesztet is rendelünk hozzá.
+    \item $\min |\networktestset_i|$, ahol $1 \leq i \leq |\networktestset|$: Szélességi bejárást használunk, ami leáll, amint lefedtünk minden vezérlési helyet, vagyis csak olyan mélyre megyünk az ASG bejárása során, amilyen mélyre szükséges, így csak olyan hosszú teszteseteket generálunk, amilyen hosszúakat szükséges.
+    \item $\min |\networktestset|$: Ha még nem fedtünk le minden vezérlési helyet, vagyis új tesztesetet kell generálnunk, az új tesztesetet által érintett összes vezérlési helyhez az új tesztesetet rendeljük a $locTests$-ben. Így az eredmény tesztkészlet nem fogja tartalmazni a korábban generált, rövidebb teszteket, csak azokat, amelyekre ténylegesen szükség van. \label{kovTelj:tesztekszama}
+    \item $\min time(\networktestset_i)$, ahol $1 \leq i \leq |\networktestset|$: A \textsc{ReduceDelays} eljárás garantálja, hogy amennyiben $time(\networktestset_i)$-nek van minimuma, megtaláljuk (felhasználva, hogy a feltételekben csak egészekhez hasonlíthatjuk az óraváltozók értékeit).
+    \item $\nexists \networktestset_i, \networktestset_j$, hogy $\forall k, l: \hat{L}oc(\networktestset_i)(\hat{A}(\networktestset)_k)_l = \hat{L}oc(\networktestset_j)(\hat{A}(\networktestset)_k)_l$, ahol $1 \leq i \neq j \leq |\networktestset|$, $1 \leq k \leq |\hat{A}(\networktestset)|$ és $1 \leq l \leq |\networktestset_i|$: Hasonlóan, mint a \ref{kovTelj:tesztekszama}. pont.
+\end{enumerate}
+
+Megjegyzendő, hogy \aref{kov:tesztekhossza}. és \ref{kov:tesztekszama}. követelmény akár ellentétben is állhat egymással. Az általam bemutatott algoritmus egy kompromisszum a két akár különböző optimum között.
+
+\section{Kimeneti formátumok} \label{kimenet}
+
+A generált tesztkészletet két formátumban is meg kívánjuk jeleníteni: szövegesen és grafikusan. Előbbi könnyebben feldolgozható, utóbbi könnyebben értelmezhető emberek számára.
+
+Mindkét esetben nehézség, hogy az XTA formátumban csak a vezérlési helyeknek van nevük, az éleknek nincs. Vagyis egy tesztesetben egyértelműen leírható egy állapot (az automaták aktív vezérlési helyeinek neveivel), két állapot közti lépés (a tüzelt tranzíciók) viszont már nem.
+
+A tesztesetek leírására ezért két lehetőségünk van:
+\begin{enumerate}
+    \item A lépésekben tüzelt éleket az élek tulajdonságaival (őrfeltételek, akciók) írjuk le. Ez ugyan önmagában nem feltétlenül biztosít tökéletes egyediséget, de nagyban megkönnyíti a beazonosítást. \label{kimenet:élekis}
+    \item A tüzelő élekkel nem foglalkozunk, csak a lépésekben aktív vezérlési helyekkel. Két állapotból majdnem mindig kikövetkeztethető, hogy melyik él tüzelt. \label{kimenet:csakvezérlésihelyek}
+\end{enumerate}
+
+A szöveges formátumban az \ref{kimenet:élekis}. lehetőséget, grafikus formátumban pedig a \ref{kimenet:csakvezérlésihelyek}. lehetőséget fogjuk használni. (A grafikus formátum emberi felhasználásra készül, ahol az élek részletes tulajdonságai csak zavaróak lennének.)

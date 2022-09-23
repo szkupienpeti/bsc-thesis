@@ -1,0 +1,45 @@
+% TeXstudio spellcheck 2020-12-10 16:25
+
+\pagenumbering{roman}
+\setcounter{page}{1}
+
+\selecthungarian
+
+%----------------------------------------------------------------------------
+% Abstract in Hungarian
+%----------------------------------------------------------------------------
+\chapter*{Kivonat}\addcontentsline{toc}{chapter}{Kivonat}
+
+Napjainkban már szinte minden biztonságkritikus rendszert szoftverek vezérelnek, amelyeknek minden körülmények között helyesen kell működniük, ellenkező esetben beláthatatlan következményekkel kellene szembenéznünk. A helyességbizonyítás elengedhetetlen alapja a rendszer és a biztonsági követelmények formalizálása. Noha a rendszerek helyességének bizonyítására egyre gyakrabban formális módszereket alkalmaznak, ez önmagában nem helyettesíti bizonyos konkrét tesztesetek lefuttatását.
+
+A tesztkészletekkel szemben általános elvárás, hogy a rendszer minél több működését lefedjék, amire a modellalapú tesztgenerálás nyújt megoldást. Ekkor a teszteseteket nem kézzel adjuk meg, hanem a rendszer viselkedésmodelljének bejárásával generáljuk. Időzített rendszerek esetén azonban a tesztgenerálás összetettebb feladat: nem elegendő megadni a rendszer egy állapotsorozatát, az állapotváltozásokhoz konkrét időzítéseket is kell rendelnünk ahhoz, hogy megkapjuk a rendszer egy valós idejű tesztjét.
+
+Szakdolgozatomban áttekintem a modellellenőrzés alapjait és az időzített viselkedésmodellek elméletét, valamint az időzített automatákon alkalmazható absztrakciókat és az SMT problémát. Formalizálom az időzített tesztekkel kapcsolatos fogalmakat és elvárásokat, valamint bemutatok egy algoritmust, amely a rendszer egy absztrakt modelljéből minden elérhető vezérlési helyét fedő tesztkészletet generál. Az absztrakt modell bejárásával kapott absztrakt tesztesetek időzítését visszavezetem SMT problémákra.
+
+Bemutatom a Theta modellellenőrző keretrendszer releváns komponenseit, majd azokat kiegészítve implementálom az algoritmust, melyet végül esettanulmányon és méréseken keresztül részletesen is bemutatok.
+
+\vfill
+\selectenglish
+
+
+%----------------------------------------------------------------------------
+% Abstract in English
+%----------------------------------------------------------------------------
+\chapter*{Abstract}\addcontentsline{toc}{chapter}{Abstract}
+
+Nowadays almost all safety critical systems are controlled by software which must operate correctly under all circumstances, otherwise we face unforeseeable consequences. Formalizing the system and its requirements is an essential base of proving correctness. Although formal methods are used more and more often in order to prove the correctness of systems, they do not, on their own, replace running certain test cases.
+
+It is a general expectation towards test sets that they cover as many use cases as possible, which can be achieved by model-based test generation—generating test cases by traversing the behavioral model of the system instead of defining them manually. For timed systems, however, test generation becomes more complex as it is not enough to define a state sequence of the system but timing also has to be mapped to transitions to obtain a real-time test case.
+
+In this thesis, the basics of model checking, theory of timed behavioral models, as well as applicable abstractions of timed automata and the SMT problem are presented. The concepts and expectations of real-time tests are formalized and an algorithm is presented which, using an abstract model of the system, generates a test set covering every available location of the system. The timing of the abstract test cases obtained from the traversal of the abstract model is reduced to SMT problems.
+
+The relevant parts of the model checking framework Theta are also presented and the algorithm is implemented as their extension. Finally, the algorithm is discussed in detail through a case study and measurements.
+
+\vfill
+\cleardoublepage
+
+\selectthesislanguage
+
+\newcounter{romanPage}
+\setcounter{romanPage}{\value{page}}
+\stepcounter{romanPage}
