@@ -11,4 +11,4 @@ In this thesis, the basics of model checking, theory of timed behavioral models,
 The relevant parts of the model checking framework Theta are also presented and the algorithm is implemented as their extension. Finally, the algorithm is discussed in detail through a case study and measurements.
 
 ---
-Based on the [LaTeX thesis template](https://github.com/ftsrg/thesis-template-latex) of [ftsrg](https://ftsrg.mit.bme.hu/en/).
+Based on the [LaTeX thesis template](https://github.com/ftsrg/thesis-template-latex) of [ftsrg](https://github.com/ftsrg).
